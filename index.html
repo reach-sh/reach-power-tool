@@ -1,0 +1,161 @@
+<html>
+  <script>
+    let pretty = (x) => x;
+    (async () => {
+      pretty = (await import('./pretty.mjs')).default;
+    })();
+    const version = '0.1.10-rc.6';
+    let reach;
+    let acc;
+    let binname;
+    let bin;
+    const get = (id) => document.getElementById(id);
+    const make = (...args) => document.createElement(...args);
+    const t = (el, s) => {
+      el.append(document.createTextNode(s));
+      return el;
+    };
+    const removeAll = (el) => {
+      while (el.firstChild) { el.removeChild(el.firstChild); }
+      return el;
+    };
+    const replace = (el, children) => {
+      removeAll(el);
+      for (const child of children) { el.appendChild(child); }
+      return el;
+    };
+    const set = (el, attrs) => {
+      for (const k in attrs) { el[k] = attrs[k]; }
+      return el;
+    };
+
+    const loadReach = () => {
+      replace(get('body'), [
+        t(make('div'), 'loading...'),
+        set(make('script'), {
+          src: `https://cdn.jsdelivr.net/npm/@reach-sh/stdlib@${version}/dist/browser/reachsdk.min.js`,
+          onload: () => {
+            reach = reachsdk.loadStdlib('ALGO');
+            showSelectConnector();
+          },
+        }),
+      ]);
+    };
+
+    const jsonArea = ({id, value, h, w}) => set(make('textarea'), {
+      id, value,
+      style: `min-height: ${h}%; min-width: ${w}%;`,
+    });
+
+    const showSelectConnector = () => {
+      const providerEnv = reach.providerEnvByName('MainNet');
+      replace(get('body'), [
+        jsonArea({
+          id: 'providerEnv', h: 50, w: 100,
+          value: JSON.stringify(providerEnv, null, 2)
+        }),
+        make('br'),
+        t(make('p'), 'Choose your wallet fallback, using the above connection details.'),
+        make('br'),
+        set(t(make('button'), 'MyAlgo Wallet'), {
+          onclick: () => { setWFB('MyAlgoConnect'); },
+        }),
+        set(t(make('button'), 'Wallet Connect'), {
+          onclick: () => { setWFB('WalletConnect'); },
+        }),
+        make('br'),
+        t(make('p'), 'You may need to disable your popup blocker'),
+        t(make('p'), 'This power tool intended for desktop use; '
+          + 'it might not work on ios because ios likes to kill the WalletConnect connection for no good reason...'
+        ),
+      ]);
+    };
+
+    const setWFB = async (wallet) => {
+      const providerEnv = JSON.parse(get('providerEnv').value);
+      const wopts = {providerEnv};
+      wopts[wallet] = reachsdk[`ALGO_${wallet}`];
+      reach.setWalletFallback(reach.walletFallback(wopts));
+      replace(get('body'), [t(make('p'), 'connecting...')])
+      acc = await reach.getDefaultAccount();
+
+      const b = (s) => set(t(make('button'), s), {
+        onclick: () => loadBin(s),
+      });
+
+      replace(get('body'), [
+        t(make('span'), 'load bin'),
+        set(make('span'), {id: 'loadedbin'}),
+        make('br'),
+        b('index.net_tok'),
+        b('index.tok_tok'),
+        b('staker.main'),
+        make('br'),
+        set(make('div'), {id: 'bindiv'}),
+      ]);
+    };
+
+    const loadBin = async (s) => {
+      binname = s;
+      bin = await import(`./${version}/${s}.mjs`);
+      const ctc = acc.contract(bin);
+      const abi = ctc.getABI();
+      console.log(JSON.stringify(abi, null, 2));
+      const b = (sig) => {
+        const fname = sig.split('(')[0];
+        const fnameArgs = sig.split(')')[0] + ')';
+
+        return set(t(make('button'), fnameArgs), {
+          onclick: () => go(fname),
+          // use Staker_withdrawAndHarvest instead
+          disabled: fname == 'Staker_withdraw',
+        });
+      };
+      t(removeAll(get('loadedbin')), ` (currently loaded: ${s})`);
+      replace(get('bindiv'), [
+        t(make('span'), 'appid'),
+        set(make('input'), { id: 'appid' }),
+        make('br'),
+        set(t(make('span'), 'args (json)')),
+        make('br'),
+        jsonArea({id: 'args', value: '[]', h: 0, w: 80}),
+        make('br'),
+        t(make('span'), 'commands'),
+        make('br'),
+        replace(make('div'), abi.sigs.map(b)),
+        make('br'),
+        t(make('span'), 'result'),
+        make('br'),
+        set(jsonArea({id: 'output', value: '', h: 50, w: 80})),
+        make('br'),
+        t(make('p'), `my addr: ${acc.getAddress()}`),
+        t(make('p'), `my addr (pretty): ${reach.formatAddress(acc)}`),
+        t(make('p'), 'Please note that all quantities are in the indivisible unit. e.g. if the token has 6 decimals, the amount is multiplied by 1,000,000'),
+      ]);
+    };
+
+    const getIn = (obj, path) => {
+      while (obj && path.length > 0) { obj = obj[path.shift()]; }
+      return obj;
+    }
+
+    const go = async (fname) => {
+      const appid = get('appid').value;
+      const ctc = acc.contract(bin, appid);
+      const args = JSON.parse(get('args').value);
+      const fpath = fname.split('_');
+      const f = getIn(ctc, ['views', ...fpath])
+             || getIn(ctc, ['apis', ...fpath]);
+      set(get('output'), {value: `calling ${fname}...`});
+      const res = await f(...args);
+      console.log(pretty(res));
+      set(get('output'), {value: JSON.stringify(pretty(res), null, 2)});
+    };
+  </script>
+  <body id="body">
+    <p>This is a simple power tool for calling Reach contract methods</p>
+    <button id="theButton" onclick="loadReach()">load reach 0.1.10-rc.6 for Algorand</button>
+  </body>
+  <script>
+  </script>
+</html>
