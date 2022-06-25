@@ -147,9 +147,14 @@
       const f = getIn(ctc, ['views', ...fpath])
              || getIn(ctc, ['apis', ...fpath]);
       set(get('output'), {value: `calling ${fname}...`});
-      const res = await f(...args);
-      console.log(pretty(res));
-      set(get('output'), {value: JSON.stringify(pretty(res), null, 2)});
+      try {
+        const res = await f(...args);
+        console.log(pretty(res));
+        set(get('output'), {value: JSON.stringify(pretty(res), null, 2)});
+      } catch (e) {
+        console.error(e);
+        set(get('output'), {value: `${e}`});
+      }
     };
   </script>
   <body id="body">
