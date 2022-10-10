@@ -44,6 +44,7 @@
 
     const jsonArea = ({id, value, h, w}) => set(make('textarea'), {
       id, value,
+      spellcheck: false,
       style: `min-height: ${h}%; min-width: ${w}%;`,
     });
 
@@ -201,6 +202,7 @@
       out.value = '';
       while (!stopped) {
         const e = await ctc.e[ename].next();
+        if (stopped) break;
         const estr = JSON.stringify(pretty(e));
         h = out.value;
         if (h) out.value += '\n';
