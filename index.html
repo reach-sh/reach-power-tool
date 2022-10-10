@@ -57,6 +57,9 @@
         make('br'),
         t(make('p'), 'Choose your wallet fallback, using the above connection details.'),
         make('br'),
+        set(t(make('button'), 'No Wallet'), {
+          onclick: () => { setWFB(); },
+        }),
         set(t(make('button'), 'MyAlgo Wallet'), {
           onclick: () => { setWFB('MyAlgoConnect'); },
         }),
@@ -74,10 +77,15 @@
     const setWFB = async (wallet) => {
       const providerEnv = JSON.parse(get('providerEnv').value);
       const wopts = {providerEnv};
-      wopts[wallet] = reachsdk[`ALGO_${wallet}`];
-      reach.setWalletFallback(reach.walletFallback(wopts));
-      replace(get('body'), [t(make('p'), 'connecting...')])
-      acc = await reach.getDefaultAccount();
+      if (wallet) {
+        wopts[wallet] = reachsdk[`ALGO_${wallet}`];
+        reach.setWalletFallback(reach.walletFallback(wopts));
+        replace(get('body'), [t(make('p'), 'connecting...')])
+        acc = await reach.getDefaultAccount();
+      } else {
+        reach.setWalletFallback(reach.walletFallback(wopts));
+        acc = await reach.createAccount();
+      }
 
       const b = (s) => set(t(make('button'), s), {
         onclick: () => loadBin(s),
@@ -111,6 +119,11 @@
           disabled: fname == 'Staker_withdraw',
         });
       };
+      const be = (e) => {
+        return set(t(make('button'), e), {
+          onclick: () => goe(e),
+        });
+      };
       t(removeAll(get('loadedbin')), ` (currently loaded: ${s})`);
       replace(get('bindiv'), [
         t(make('span'), 'appid'),
@@ -123,6 +136,10 @@
         t(make('span'), 'commands'),
         make('br'),
         replace(make('div'), abi.sigs.map(b)),
+        make('br'),
+        t(make('span'), 'events'),
+        replace(make('div'), Object.keys(ctc.e).map(be)),
+        set(make('div'), { id: 'estatus' }),
         make('br'),
         t(make('span'), 'result'),
         make('br'),
@@ -155,6 +172,56 @@
         console.error(e);
         set(get('output'), {value: `${e}`});
       }
+    };
+    let stop;
+    let count;
+    const goe = async (ename) => {
+      if (stop) stop();
+      let stopped = false;
+      const estatus = get('estatus');
+      stop = () => {
+        stopped = true;
+        removeAll(estatus);
+      };
+      count = 0;
+      const appid = get('appid').value;
+      const ctc = acc.contract(bin, appid);
+      replace(estatus, [
+        t(make('span'), 'reading live... '),
+        set(make('span'), { id: 'ecount' }),
+        set(t(make('button'), 'stop'), {
+          onclick: stop,
+        }),
+        set(t(make('button'), 'prettify addrs'), {
+          onclick: () => prettifyAddrs(ename),
+        }),
+      ]);
+      const ecount = get('ecount');
+      const out = get('output');
+      out.value = '';
+      while (!stopped) {
+        const e = await ctc.e[ename].next();
+        const estr = JSON.stringify(pretty(e));
+        h = out.value;
+        if (h) out.value += '\n';
+        out.value += estr;
+        ecount.innerHTML = ++count;
+      }
+    };
+    const prettifyAddrs = (ename) => {
+      const out = get('output');
+      const obj_strs = out.value.split('\n');
+      out.value = obj_strs.map((obj_str) => {
+        const obj = JSON.parse(obj_str);
+        // TODO: prettify based on inspecting reach type
+        obj.what[0] = reach.formatAddress(obj.what[0]);
+        if (ename === 'Harvest') {
+          obj.what[2] = reach.formatAddress(obj.what[2]);
+        } else if (ename === 'Withdraw') {
+          obj.what[3] = reach.formatAddress(obj.what[3]);
+        }
+        return JSON.stringify(obj);
+      }).join('\n');
     };
   </script>
   <body id="body">
